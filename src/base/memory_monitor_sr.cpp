@@ -22,12 +22,9 @@
 
 #include <stdio.h>
 #include <malloc.h>
-#include <cassert>
 #include <cstring>
-#include <sstream>
 #include <algorithm>
 
-#include "openssl/md5.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
@@ -36,13 +33,11 @@
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 
-typedef struct mmon_metainfo   // 32 bytes
+typedef struct mmon_metainfo   // 16 bytes
 {
   uint64_t size;
   int tag_id;
-  int checksum;
-  int line;
-  char pad[8];
+  int magic_number;
 } MMON_METAINFO;
 
 bool is_mem_tracked = false;
@@ -51,63 +46,80 @@ namespace cubmem
 {
   memory_monitor *mmon_Gl = nullptr;
 
-  memory_monitor::memory_monitor (const char *server_name)
-    : m_server_name {server_name}
+  mmon_stat::mmon_stat (uint64_t size, uint64_t atomic_size)
+    : temp_stat {size},
+      stat {atomic_size}
+  {}
+
+  mmon_stat::mmon_stat (uint64_t size)
+    : temp_stat {size},
+      stat {size}
+  {}
+
+  mmon_stat::mmon_stat (const mmon_stat &rhs)
+    : temp_stat {rhs.temp_stat},
+      stat {rhs.stat.load ()}
+  {}
+
+  mmon_stat &mmon_stat::operator = (const mmon_stat &rhs)
   {
-    m_total_mem_usage = 0;
-    m_meta_alloc_count = 0;
+    if (&rhs != this)
+      {
+	temp_stat = rhs.temp_stat;
+	stat = rhs.stat.load ();
+      }
   }
+
+  memory_monitor::memory_monitor (const char *server_name)
+    : m_server_name {server_name},
+      m_magic_number {*reinterpret_cast <const int *> ("MMON")},
+      m_total_mem_usage {0},
+      m_meta_alloc_count {0}
+  {}
 
   size_t memory_monitor::get_alloc_size (char *ptr)
   {
-    size_t ret;
-    size_t alloc_size = malloc_usable_size (ptr);
+#if defined(WINDOWS)
+    size_t alloc_size = 0;
+    assert (false);
+#else
+    size_t alloc_size = malloc_usable_size ((void *)ptr);
+#endif // !WINDOWS
+
+    if (alloc_size <= MMON_ALLOC_META_SIZE)
+      {
+	return alloc_size;
+      }
+
     char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-    MMON_METAINFO metainfo;
+    MMON_METAINFO *metainfo = (MMON_METAINFO *) meta_ptr;
 
-    memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
-
-    if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
+    if (metainfo->magic_number == m_magic_number)
       {
-	ret = (size_t) metainfo.size - MMON_ALLOC_META_SIZE;
-      }
-    else
-      {
-	ret = alloc_size;
+	alloc_size = (size_t) metainfo->size - MMON_ALLOC_META_SIZE;
       }
 
-    return ret;
+    return alloc_size;
   }
 
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
-    std::string ret;
+#if defined(WINDOWS)
+    std::string target ("");
+    assert (false);
+#else
+    std::string target ("/src/");
+#endif // !WINDOWS
 
-    // Find the last occurrence of "src" in the path
-    size_t pos = filecopy.rfind ("src");
+    size_t pos = filecopy.rfind (target);
 
     if (pos != std::string::npos)
       {
-	filecopy = filecopy.substr (pos);
+	filecopy = filecopy.substr (pos + target.length ());
       }
 
-    ret = filecopy + ':' + std::to_string (line);
-    return ret;
-  }
-
-  int memory_monitor::generate_checksum (int tag_id, uint64_t size)
-  {
-    char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    int ret;
-
-    memset (input, 0, sizeof (input));
-    memset (digest, 0, sizeof (digest));
-    sprintf (input, "%d%lu", tag_id, size);
-    (void) MD5 (reinterpret_cast<const unsigned char *> (input), strlen (input), digest);
-    memcpy (&ret, digest, sizeof (int));
-    return ret;
+    return filecopy + ':' + std::to_string (line);
   }
 
   void memory_monitor::add_stat (char *ptr, size_t size, const char *file, const int line)
@@ -118,62 +130,76 @@ namespace cubmem
 
     assert (size >= 0);
 
-    metainfo.line = line;
     metainfo.size = (uint64_t) size;
     m_total_mem_usage += metainfo.size;
 
     tag_name = make_tag_name (file, line);
 
     //std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
-    if (auto search = m_tag_map.find (tag_name); search != m_tag_map.end ())
+retry:
+    const auto search = m_tag_map.find (tag_name);
+    if (search != m_tag_map.end ())
       {
 	metainfo.tag_id = search->second;
-	m_stat_map[metainfo.tag_id] += metainfo.size;
+	m_stat_map.find (metainfo.tag_id)->second.stat += metainfo.size;
+	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
       }
     else
       {
+	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> tag_map_success;
+	std::pair<tbb::concurrent_unordered_map<int, mmon_stat>::iterator, bool> stat_map_success;
 	metainfo.tag_id = m_tag_map.size ();
 	// tag is start with 0
 	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
-	m_tag_map.insert (tag_map_entry);
-	m_stat_map.insert (std::make_pair (metainfo.tag_id, metainfo.size));
+	tag_map_success = m_tag_map.insert (tag_map_entry);
+	if (!tag_map_success.second)
+	  {
+	    goto retry;
+	  }
+
+	stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
+	if (!stat_map_success.second)
+	  {
+	    goto retry;
+	  }
       }
     //tag_map_lock.unlock ();
 
     // put meta info into the alloced chunk
     meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
-    metainfo.checksum = generate_checksum (metainfo.tag_id, metainfo.size);
-    memcpy (meta_ptr, &metainfo, sizeof (MMON_METAINFO));
+    metainfo.magic_number = m_magic_number;
+    memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
     m_meta_alloc_count++;
   }
 
   void memory_monitor::sub_stat (char *ptr)
   {
+#if defined(WINDOWS)
+    size_t alloc_size = 0;
+    assert (false);
+#else
     size_t alloc_size = malloc_usable_size ((void *)ptr);
-    char *meta_ptr = NULL;
-    MMON_METAINFO metainfo;
+#endif // !WINDOWS
 
-    if (ptr == NULL)
+    assert (ptr != NULL);
+
+    if (alloc_size >= MMON_ALLOC_META_SIZE)
       {
-	return;
-      }
+	char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
+	MMON_METAINFO *metainfo = (MMON_METAINFO *)meta_ptr;
 
-    if (alloc_size > MMON_ALLOC_META_SIZE)
-      {
-	meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-
-	memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
-
-	if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
+	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
-	    assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
+	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_stat_map.size()));
+	    assert (m_stat_map.find (metainfo->tag_id)->second.stat >= metainfo->size);
+	    assert (m_total_mem_usage >= metainfo->size);
 
-	    m_total_mem_usage -= metainfo.size;
-	    m_stat_map[metainfo.tag_id] -= metainfo.size;
+	    m_total_mem_usage -= metainfo->size;
+	    m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
 
 	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
 	    m_meta_alloc_count--;
+	    assert (m_meta_alloc_count >= 0);
 	  }
       }
   }
@@ -187,7 +213,7 @@ namespace cubmem
 
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
-	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
+	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map.find (it->second)->second.stat.load ()));
       }
 
     const auto &comp = [] (const auto& stat_pair1, const auto& stat_pair2)

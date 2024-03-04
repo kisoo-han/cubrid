@@ -30,16 +30,36 @@
 #include <string>
 #include <atomic>
 
+#include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
 
 // IMPORTANT!!
 // This meta size is related with allocation byte align
 // Don't adjust it freely
 // 4 byte tag + 8 byte size + 4 byte line + 4 byte checksum + 12 byte padding
-#define MMON_ALLOC_META_SIZE 32
+#define MMON_ALLOC_META_SIZE 16
 
 namespace cubmem
 {
+  class mmon_stat
+  {
+    public:
+      mmon_stat (uint64_t size, uint64_t atomic_size);
+      mmon_stat (uint64_t size);
+
+      mmon_stat (const mmon_stat &rhs);
+      mmon_stat &operator = (const mmon_stat &rhs);
+
+      mmon_stat (mmon_stat &&) = delete;
+      mmon_stat &operator = (mmon_stat &&) = delete;
+
+      ~mmon_stat() = default;
+
+    public:
+      uint64_t temp_stat;
+      std::atomic<uint64_t> stat;
+  };
+
   class memory_monitor
   {
     public:
@@ -56,12 +76,12 @@ namespace cubmem
       int generate_checksum (int tag_id, uint64_t size);
 
     private:
-      std::unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
-      std::unordered_map<int, std::atomic<uint64_t>> m_stat_map; // tag id <-> memory usage
-      mutable std::mutex m_tag_map_mutex;
+      tbb::concurrent_unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
+      tbb::concurrent_unordered_map<int, mmon_stat> m_stat_map; // tag id <-> memory usage
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
-      int m_meta_alloc_count;
+      std::atomic<int> m_meta_alloc_count;
+      const int m_magic_number;
   };
 } //namespace cubmem
 
