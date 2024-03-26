@@ -106,18 +106,28 @@ inline void *
 cub_realloc (void *ptr, size_t size, const char *file, const int line)
 {
   void *p = NULL;
+  size_t old_size, copy_size;
 
   if (mmon_is_mem_tracked ())
     {
-      p = malloc (size + MMON_ALLOC_META_SIZE);
-      if (p != NULL)
+      if (size == 0)
 	{
-	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
-
-	  if (ptr != NULL)
+	  cub_free (ptr);
+	}
+      else
+	{
+	  p = malloc (size + MMON_ALLOC_META_SIZE);
+	  if (p != NULL)
 	    {
-	      memcpy (p, ptr, get_alloc_size (ptr));
-	      cub_free (ptr);
+	      mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
+
+	      if (ptr != NULL)
+		{
+		  old_size = get_alloc_size (ptr);
+		  copy_size = old_size < size ? old_size : size;
+		  memcpy (p, ptr, copy_size);
+		  cub_free (ptr);
+		}
 	    }
 	}
     }

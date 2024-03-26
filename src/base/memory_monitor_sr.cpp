@@ -68,6 +68,7 @@ namespace cubmem
 	temp_stat = rhs.temp_stat;
 	stat = rhs.stat.load ();
       }
+    return *this;
   }
 
   memory_monitor::memory_monitor (const char *server_name)
@@ -137,11 +138,20 @@ namespace cubmem
 
     //std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
 retry:
-    const auto search = m_tag_map.find (tag_name);
-    if (search != m_tag_map.end ())
+    const auto tag_search = m_tag_map.find (tag_name);
+    if (tag_search != m_tag_map.end ())
       {
-	metainfo.tag_id = search->second;
-	m_stat_map.find (metainfo.tag_id)->second.stat += metainfo.size;
+	metainfo.tag_id = tag_search->second;
+	auto stat_search = m_stat_map.find (metainfo.tag_id);
+	if (stat_search != m_stat_map.end ())
+	  {
+	    stat_search->second.stat += metainfo.size;
+	    //m_stat_map.find (metainfo.tag_id)->second.stat += metainfo.size;
+	  }
+	else
+	  {
+	    goto retry;
+	  }
 	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
       }
     else
@@ -191,7 +201,7 @@ retry:
 	if (metainfo->magic_number == m_magic_number)
 	  {
 	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_stat_map.size()));
-	    assert (m_stat_map.find (metainfo->tag_id)->second.stat >= metainfo->size);
+	    assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
 	    assert (m_total_mem_usage >= metainfo->size);
 
 	    m_total_mem_usage -= metainfo->size;
