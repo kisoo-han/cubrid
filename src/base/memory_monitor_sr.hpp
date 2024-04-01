@@ -77,7 +77,8 @@ namespace cubmem
 
     private:
       tbb::concurrent_unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
-      tbb::concurrent_unordered_map<int, mmon_stat> m_stat_map; // tag id <-> memory usage
+      std::atomic<uint64_t> m_stat_map[10000];
+      //tbb::concurrent_unordered_map<int, mmon_stat> m_stat_map; // tag id <-> memory usage
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       std::atomic<int> m_meta_alloc_count;

@@ -72,7 +72,8 @@ namespace cubmem
   }
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_server_name {server_name},
+    : m_stat_map {},
+      m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
       m_meta_alloc_count {0}
@@ -142,7 +143,8 @@ retry:
     if (tag_search != m_tag_map.end ())
       {
 	metainfo.tag_id = tag_search->second;
-	auto stat_search = m_stat_map.find (metainfo.tag_id);
+	m_stat_map[metainfo.tag_id] += metainfo.size;
+	/*auto stat_search = m_stat_map.find (metainfo.tag_id);
 	if (stat_search != m_stat_map.end ())
 	  {
 	    stat_search->second.stat += metainfo.size;
@@ -151,13 +153,13 @@ retry:
 	else
 	  {
 	    goto retry;
-	  }
+	  }*/
 	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
       }
     else
       {
 	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> tag_map_success;
-	std::pair<tbb::concurrent_unordered_map<int, mmon_stat>::iterator, bool> stat_map_success;
+	//std::pair<tbb::concurrent_unordered_map<int, mmon_stat>::iterator, bool> stat_map_success;
 	metainfo.tag_id = m_tag_map.size ();
 	// tag is start with 0
 	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
@@ -167,11 +169,8 @@ retry:
 	    goto retry;
 	  }
 
-	stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
-	if (!stat_map_success.second)
-	  {
-	    goto retry;
-	  }
+	//stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
+	m_stat_map[metainfo.tag_id] += metainfo.size;
       }
     //tag_map_lock.unlock ();
 
@@ -200,12 +199,14 @@ retry:
 
 	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_stat_map.size()));
-	    assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
+	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_tag_map.size()));
+	    //assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
+	    assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
 	    assert (m_total_mem_usage >= metainfo->size);
 
 	    m_total_mem_usage -= metainfo->size;
-	    m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
+	    m_stat_map[metainfo->tag_id] -= metainfo->size;
+	    //m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
 
 	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
 	    m_meta_alloc_count--;
@@ -223,7 +224,8 @@ retry:
 
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
-	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map.find (it->second)->second.stat.load ()));
+	//server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map.find (it->second)->second.stat.load ()));
+	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
       }
 
     const auto &comp = [] (const auto& stat_pair1, const auto& stat_pair2)
