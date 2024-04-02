@@ -72,7 +72,8 @@ namespace cubmem
   }
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_stat_map {},
+    : m_tag_map {5000},
+      m_stat_map {},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
