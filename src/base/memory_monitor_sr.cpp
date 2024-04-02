@@ -72,8 +72,7 @@ namespace cubmem
   }
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_tag_map {5000},
-      m_stat_map {},
+    : m_stat_map {},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
@@ -134,17 +133,18 @@ namespace cubmem
     assert (size >= 0);
 
     metainfo.size = (uint64_t) size;
-    m_total_mem_usage += metainfo.size;
+    //m_total_mem_usage += metainfo.size;
 
     tag_name = make_tag_name (file, line);
 
-    //std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
 retry:
     const auto tag_search = m_tag_map.find (tag_name);
     if (tag_search != m_tag_map.end ())
       {
 	metainfo.tag_id = tag_search->second;
-	m_stat_map[metainfo.tag_id] += metainfo.size;
+	//m_stat_map[metainfo.tag_id] += metainfo.size;
+
+	// XXX: may be removed?
 	/*auto stat_search = m_stat_map.find (metainfo.tag_id);
 	if (stat_search != m_stat_map.end ())
 	  {
@@ -156,6 +156,7 @@ retry:
 	    goto retry;
 	  }*/
 	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
+	// XXX: may be removed?
       }
     else
       {
@@ -170,16 +171,18 @@ retry:
 	    goto retry;
 	  }
 
+	// XXX: may be removed?
 	//stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
-	m_stat_map[metainfo.tag_id] += metainfo.size;
+	// XXX: may be removed?
+
+	//m_stat_map[metainfo.tag_id] += metainfo.size;
       }
-    //tag_map_lock.unlock ();
 
     // put meta info into the alloced chunk
     meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
     metainfo.magic_number = m_magic_number;
     memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
-    m_meta_alloc_count++;
+    //m_meta_alloc_count++;
   }
 
   void memory_monitor::sub_stat (char *ptr)
@@ -201,17 +204,21 @@ retry:
 	if (metainfo->magic_number == m_magic_number)
 	  {
 	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_tag_map.size()));
+	    // XXX: may be removed?
 	    //assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
-	    assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
-	    assert (m_total_mem_usage >= metainfo->size);
+	    // XXX: may be removed?
+	    //assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
+	    //assert (m_total_mem_usage >= metainfo->size);
 
-	    m_total_mem_usage -= metainfo->size;
-	    m_stat_map[metainfo->tag_id] -= metainfo->size;
+	    //m_total_mem_usage -= metainfo->size;
+	    //m_stat_map[metainfo->tag_id] -= metainfo->size;
+	    // XXX: may be removed?
 	    //m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
+	    // XXX: may be removed?
 
 	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
-	    m_meta_alloc_count--;
-	    assert (m_meta_alloc_count >= 0);
+	    //m_meta_alloc_count--;
+	    //assert (m_meta_alloc_count >= 0);
 	  }
       }
   }
