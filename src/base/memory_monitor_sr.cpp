@@ -27,6 +27,7 @@
 
 #include "error_manager.h"
 #include "system_parameter.h"
+#include "db.h"
 #include "memory_monitor_sr.hpp"
 
 #ifndef HAVE_USR_INCLUDE_MALLOC_H
@@ -138,6 +139,7 @@ namespace cubmem
     tag_name = make_tag_name (file, line);
 
 retry:
+#if 0
     const auto tag_search = m_tag_map.find (tag_name);
     if (tag_search != m_tag_map.end ())
       {
@@ -177,10 +179,11 @@ retry:
 
 	//m_stat_map[metainfo.tag_id] += metainfo.size;
       }
+#endif
 
     // put meta info into the alloced chunk
     meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
-    metainfo.magic_number = m_magic_number;
+    //metainfo.magic_number = m_magic_number;
     memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
     //m_meta_alloc_count++;
   }
@@ -292,6 +295,11 @@ int mmon_initialize (const char *server_name)
 
   assert (server_name != NULL);
   assert (mmon_Gl == nullptr);
+
+  if (db_Disable_modifications)
+    {
+      sysprm_set_force (prm_get_name (PRM_ID_MEMORY_MONITORING), "no");
+    }
 
   if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
