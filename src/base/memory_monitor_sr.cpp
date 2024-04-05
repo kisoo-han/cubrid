@@ -21,7 +21,6 @@
  */
 
 #include <stdio.h>
-#include <malloc.h>
 #include <cstring>
 #include <algorithm>
 
@@ -30,18 +29,11 @@
 #include "db.h"
 #include "memory_monitor_sr.hpp"
 
-#ifndef HAVE_USR_INCLUDE_MALLOC_H
-#define HAVE_USR_INCLUDE_MALLOC_H
-#endif
-
-typedef struct mmon_metainfo   // 16 bytes
-{
-  uint64_t size;
-  int tag_id;
-  int magic_number;
-} MMON_METAINFO;
-
 bool is_mem_tracked = false;
+
+//extern inline bool mmon_is_mem_tracked ();
+//extern inline void mmon_add_stat (char *ptr, size_t size, const char *file, const int line);
+//extern inline void mmon_sub_stat (char *ptr);
 
 namespace cubmem
 {
@@ -73,12 +65,31 @@ namespace cubmem
   }
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_stat_map {},
+    : m_tag_map {4096},
+      m_stat_map {},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
       m_meta_alloc_count {0}
-  {}
+  {
+    std::string filecopy (__FILE__);
+#if defined(WINDOWS)
+    std::string target ("");
+    assert (false);
+#else
+    std::string target ("/src/");
+#endif // !WINDOWS
+
+    size_t pos = filecopy.rfind (target);
+    if (pos != std::string::npos)
+      {
+	m_target_pos = pos + target.length();
+      }
+    else
+      {
+	m_target_pos = 0;
+      }
+  }
 
   size_t memory_monitor::get_alloc_size (char *ptr)
   {
@@ -104,7 +115,7 @@ namespace cubmem
 
     return alloc_size;
   }
-
+#if 0
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
@@ -125,11 +136,11 @@ namespace cubmem
     return filecopy + ':' + std::to_string (line);
   }
 
-  void memory_monitor::add_stat (char *ptr, size_t size, const char *file, const int line)
+  inline void memory_monitor::add_stat (char *ptr, size_t size, const char *file, const int line)
   {
     std::string tag_name;
     char *meta_ptr = NULL;
-    MMON_METAINFO metainfo;
+    MMON_METAINFO *metainfo;
 
     assert (size >= 0);
 
@@ -188,7 +199,7 @@ retry:
     //m_meta_alloc_count++;
   }
 
-  void memory_monitor::sub_stat (char *ptr)
+  inline void memory_monitor::sub_stat (char *ptr)
   {
 #if defined(WINDOWS)
     size_t alloc_size = 0;
@@ -225,7 +236,7 @@ retry:
 	  }
       }
   }
-
+#endif
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
@@ -283,12 +294,12 @@ retry:
 } // namespace cubmem
 
 using namespace cubmem;
-
+#if 0
 bool mmon_is_mem_tracked ()
 {
   return (mmon_Gl != nullptr);
 }
-
+#endif
 int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
@@ -336,7 +347,7 @@ size_t mmon_get_alloc_size (char *ptr)
   // unreachable
   return 0;
 }
-
+#if 0
 void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)
 {
   if (mmon_is_mem_tracked ())
@@ -353,7 +364,7 @@ void mmon_sub_stat (char *ptr)
       mmon_Gl->sub_stat (ptr);
     }
 }
-
+#endif
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
   if (mmon_is_mem_tracked ())
