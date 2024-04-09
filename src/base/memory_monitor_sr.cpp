@@ -39,31 +39,6 @@ namespace cubmem
 {
   memory_monitor *mmon_Gl = nullptr;
 
-  mmon_stat::mmon_stat (uint64_t size, uint64_t atomic_size)
-    : temp_stat {size},
-      stat {atomic_size}
-  {}
-
-  mmon_stat::mmon_stat (uint64_t size)
-    : temp_stat {size},
-      stat {size}
-  {}
-
-  mmon_stat::mmon_stat (const mmon_stat &rhs)
-    : temp_stat {rhs.temp_stat},
-      stat {rhs.stat.load ()}
-  {}
-
-  mmon_stat &mmon_stat::operator = (const mmon_stat &rhs)
-  {
-    if (&rhs != this)
-      {
-	temp_stat = rhs.temp_stat;
-	stat = rhs.stat.load ();
-      }
-    return *this;
-  }
-
   memory_monitor::memory_monitor (const char *server_name)
     : m_tag_map {4096},
       m_stat_map {},
@@ -306,11 +281,12 @@ int mmon_initialize (const char *server_name)
 
   assert (server_name != NULL);
   assert (mmon_Gl == nullptr);
-
+#if 0
   if (db_Disable_modifications)
     {
       sysprm_set_force (prm_get_name (PRM_ID_MEMORY_MONITORING), "no");
     }
+#endif
 
   if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {

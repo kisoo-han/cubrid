@@ -52,25 +52,6 @@ typedef struct mmon_metainfo   // 16 bytes
 
 namespace cubmem
 {
-  class mmon_stat
-  {
-    public:
-      mmon_stat (uint64_t size, uint64_t atomic_size);
-      mmon_stat (uint64_t size);
-
-      mmon_stat (const mmon_stat &rhs);
-      mmon_stat &operator = (const mmon_stat &rhs);
-
-      mmon_stat (mmon_stat &&) = delete;
-      mmon_stat &operator = (mmon_stat &&) = delete;
-
-      ~mmon_stat() = default;
-
-    public:
-      uint64_t temp_stat;
-      std::atomic<uint64_t> stat;
-  };
-
   class memory_monitor
   {
     public:
@@ -82,10 +63,6 @@ namespace cubmem
       inline void sub_stat (char *ptr);
       void aggregate_server_info (MMON_SERVER_INFO &server_info);
       void finalize_dump ();
-
-    private:
-      //std::string make_tag_name (const char *file, const int line);
-      int generate_checksum (int tag_id, uint64_t size);
 
     private:
       tbb::concurrent_unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
@@ -128,53 +105,29 @@ namespace cubmem
 
     make_tag_name (tag_name, file, line);
 retry:
-    ;
-#if 0
     const auto tag_search = m_tag_map.find (tag_name);
     if (tag_search != m_tag_map.end ())
       {
-	metainfo.tag_id = tag_search->second;
-	//m_stat_map[metainfo.tag_id] += metainfo.size;
-
-	// XXX: may be removed?
-	/*auto stat_search = m_stat_map.find (metainfo.tag_id);
-	if (stat_search != m_stat_map.end ())
-	  {
-	    stat_search->second.stat += metainfo.size;
-	    //m_stat_map.find (metainfo.tag_id)->second.stat += metainfo.size;
-	  }
-	else
-	  {
-	    goto retry;
-	  }*/
-	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
-	// XXX: may be removed?
+	metainfo->tag_id = tag_search->second;
+	m_stat_map[metainfo->tag_id] += metainfo->size;
       }
     else
       {
 	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> tag_map_success;
-	//std::pair<tbb::concurrent_unordered_map<int, mmon_stat>::iterator, bool> stat_map_success;
-	metainfo.tag_id = m_tag_map.size ();
+	metainfo->tag_id = m_tag_map.size ();
 	// tag is start with 0
-	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
+	std::pair <std::string, int> tag_map_entry (tag_name, metainfo->tag_id);
 	tag_map_success = m_tag_map.insert (tag_map_entry);
 	if (!tag_map_success.second)
 	  {
 	    goto retry;
 	  }
-
-	// XXX: may be removed?
-	//stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
-	// XXX: may be removed?
-
-	//m_stat_map[metainfo.tag_id] += metainfo.size;
+	m_stat_map[metainfo->tag_id] += metainfo->size;
       }
-#endif
 
     // put meta info into the alloced chunk
-    //metainfo.magic_number = m_magic_number;
-    //memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
-    //m_meta_alloc_count++;
+    metainfo->magic_number = m_magic_number;
+    m_meta_alloc_count++;
   }
 
   inline void memory_monitor::sub_stat (char *ptr)
@@ -196,21 +149,16 @@ retry:
 	if (metainfo->magic_number == m_magic_number)
 	  {
 	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_tag_map.size()));
-	    // XXX: may be removed?
-	    //assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
-	    // XXX: may be removed?
-	    //assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
-	    //assert (m_total_mem_usage >= metainfo->size);
+	    assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
+	    assert (m_total_mem_usage >= metainfo->size);
 
-	    //m_total_mem_usage -= metainfo->size;
-	    //m_stat_map[metainfo->tag_id] -= metainfo->size;
-	    // XXX: may be removed?
-	    //m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
-	    // XXX: may be removed?
+	    m_total_mem_usage -= metainfo->size;
+	    m_stat_map[metainfo->tag_id] -= metainfo->size;
 
-	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
-	    //m_meta_alloc_count--;
-	    //assert (m_meta_alloc_count >= 0);
+	    //memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
+	    metainfo->magic_number = 0;
+	    m_meta_alloc_count--;
+	    assert (m_meta_alloc_count >= 0);
 	  }
       }
   }
