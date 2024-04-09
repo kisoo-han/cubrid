@@ -52,6 +52,7 @@ typedef struct mmon_metainfo   // 16 bytes
 
 namespace cubmem
 {
+  extern std::atomic<uint64_t> m_stat_map[10000];
   class memory_monitor
   {
     public:
@@ -66,7 +67,7 @@ namespace cubmem
 
     private:
       tbb::concurrent_unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
-      std::atomic<uint64_t> m_stat_map[10000];
+      //std::atomic<uint64_t> m_stat_map[10000];
       //tbb::concurrent_unordered_map<int, mmon_stat> m_stat_map; // tag id <-> memory usage
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;

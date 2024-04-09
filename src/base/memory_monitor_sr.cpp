@@ -37,11 +37,12 @@ bool is_mem_tracked = false;
 
 namespace cubmem
 {
+  std::atomic<uint64_t> m_stat_map[10000] = {};
   memory_monitor *mmon_Gl = nullptr;
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_tag_map {4096},
-      m_stat_map {},
+      //m_stat_map {},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
