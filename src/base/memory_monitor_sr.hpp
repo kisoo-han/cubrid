@@ -67,8 +67,6 @@ namespace cubmem
 
     private:
       tbb::concurrent_unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
-      //std::atomic<uint64_t> m_stat_map[10000];
-      //tbb::concurrent_unordered_map<int, mmon_stat> m_stat_map; // tag id <-> memory usage
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       std::atomic<int> m_meta_alloc_count;
@@ -79,15 +77,6 @@ namespace cubmem
 
   inline void memory_monitor::make_tag_name (char *buf, const char *file, const int line)
   {
-    //std::string filecopy (file);
-#if 0
-#if defined(WINDOWS)
-    std::string target ("");
-    assert (false);
-#else
-    std::string target ("/src/");
-#endif // !WINDOWS
-#endif
     sprintf (buf, "%s:%d", file + m_target_pos, line);
   }
 
@@ -168,12 +157,9 @@ retry:
 
 } //namespace cubmem
 
-//bool mmon_is_mem_tracked ();
 int mmon_initialize (const char *server_name);
 void mmon_finalize ();
 size_t mmon_get_alloc_size (char *ptr);
-//void mmon_add_stat (char *ptr, size_t size, const char *file, const int line);
-//void mmon_sub_stat (char *ptr);
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
 
 inline bool mmon_is_mem_tracked ()

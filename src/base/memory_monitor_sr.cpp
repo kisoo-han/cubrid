@@ -31,10 +31,6 @@
 
 bool is_mem_tracked = false;
 
-//extern inline bool mmon_is_mem_tracked ();
-//extern inline void mmon_add_stat (char *ptr, size_t size, const char *file, const int line);
-//extern inline void mmon_sub_stat (char *ptr);
-
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[10000] = {};
@@ -42,7 +38,6 @@ namespace cubmem
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_tag_map {4096},
-      //m_stat_map {},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
@@ -91,128 +86,7 @@ namespace cubmem
 
     return alloc_size;
   }
-#if 0
-  std::string memory_monitor::make_tag_name (const char *file, const int line)
-  {
-    std::string filecopy (file);
-#if defined(WINDOWS)
-    std::string target ("");
-    assert (false);
-#else
-    std::string target ("/src/");
-#endif // !WINDOWS
 
-    size_t pos = filecopy.rfind (target);
-
-    if (pos != std::string::npos)
-      {
-	filecopy = filecopy.substr (pos + target.length ());
-      }
-
-    return filecopy + ':' + std::to_string (line);
-  }
-
-  inline void memory_monitor::add_stat (char *ptr, size_t size, const char *file, const int line)
-  {
-    std::string tag_name;
-    char *meta_ptr = NULL;
-    MMON_METAINFO *metainfo;
-
-    assert (size >= 0);
-
-    metainfo.size = (uint64_t) size;
-    //m_total_mem_usage += metainfo.size;
-
-    tag_name = make_tag_name (file, line);
-
-retry:
-#if 0
-    const auto tag_search = m_tag_map.find (tag_name);
-    if (tag_search != m_tag_map.end ())
-      {
-	metainfo.tag_id = tag_search->second;
-	//m_stat_map[metainfo.tag_id] += metainfo.size;
-
-	// XXX: may be removed?
-	/*auto stat_search = m_stat_map.find (metainfo.tag_id);
-	if (stat_search != m_stat_map.end ())
-	  {
-	    stat_search->second.stat += metainfo.size;
-	    //m_stat_map.find (metainfo.tag_id)->second.stat += metainfo.size;
-	  }
-	else
-	  {
-	    goto retry;
-	  }*/
-	//m_stat_map[metainfo.tag_id].stat += metainfo.size;
-	// XXX: may be removed?
-      }
-    else
-      {
-	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> tag_map_success;
-	//std::pair<tbb::concurrent_unordered_map<int, mmon_stat>::iterator, bool> stat_map_success;
-	metainfo.tag_id = m_tag_map.size ();
-	// tag is start with 0
-	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
-	tag_map_success = m_tag_map.insert (tag_map_entry);
-	if (!tag_map_success.second)
-	  {
-	    goto retry;
-	  }
-
-	// XXX: may be removed?
-	//stat_map_success = m_stat_map.insert (std::make_pair (metainfo.tag_id, mmon_stat (metainfo.size)));
-	// XXX: may be removed?
-
-	//m_stat_map[metainfo.tag_id] += metainfo.size;
-      }
-#endif
-
-    // put meta info into the alloced chunk
-    meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
-    //metainfo.magic_number = m_magic_number;
-    memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
-    //m_meta_alloc_count++;
-  }
-
-  inline void memory_monitor::sub_stat (char *ptr)
-  {
-#if defined(WINDOWS)
-    size_t alloc_size = 0;
-    assert (false);
-#else
-    size_t alloc_size = malloc_usable_size ((void *)ptr);
-#endif // !WINDOWS
-
-    assert (ptr != NULL);
-
-    if (alloc_size >= MMON_ALLOC_META_SIZE)
-      {
-	char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-	MMON_METAINFO *metainfo = (MMON_METAINFO *)meta_ptr;
-
-	if (metainfo->magic_number == m_magic_number)
-	  {
-	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_tag_map.size()));
-	    // XXX: may be removed?
-	    //assert (m_stat_map.find (metainfo->tag_id)->second.stat.load () >= metainfo->size);
-	    // XXX: may be removed?
-	    //assert (m_stat_map[metainfo->tag_id].load() >= metainfo->size);
-	    //assert (m_total_mem_usage >= metainfo->size);
-
-	    //m_total_mem_usage -= metainfo->size;
-	    //m_stat_map[metainfo->tag_id] -= metainfo->size;
-	    // XXX: may be removed?
-	    //m_stat_map.find (metainfo->tag_id)->second.stat -= metainfo->size;
-	    // XXX: may be removed?
-
-	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
-	    //m_meta_alloc_count--;
-	    //assert (m_meta_alloc_count >= 0);
-	  }
-      }
-  }
-#endif
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
@@ -222,7 +96,6 @@ retry:
 
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
-	//server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map.find (it->second)->second.stat.load ()));
 	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
       }
 
@@ -270,24 +143,13 @@ retry:
 } // namespace cubmem
 
 using namespace cubmem;
-#if 0
-bool mmon_is_mem_tracked ()
-{
-  return (mmon_Gl != nullptr);
-}
-#endif
+
 int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
 
   assert (server_name != NULL);
   assert (mmon_Gl == nullptr);
-#if 0
-  if (db_Disable_modifications)
-    {
-      sysprm_set_force (prm_get_name (PRM_ID_MEMORY_MONITORING), "no");
-    }
-#endif
 
   if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
@@ -324,24 +186,7 @@ size_t mmon_get_alloc_size (char *ptr)
   // unreachable
   return 0;
 }
-#if 0
-void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)
-{
-  if (mmon_is_mem_tracked ())
-    {
-      mmon_Gl->add_stat (ptr, size, file, line);
-    }
-}
 
-
-void mmon_sub_stat (char *ptr)
-{
-  if (mmon_is_mem_tracked ())
-    {
-      mmon_Gl->sub_stat (ptr);
-    }
-}
-#endif
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
   if (mmon_is_mem_tracked ())
