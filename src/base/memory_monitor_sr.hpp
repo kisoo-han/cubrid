@@ -103,6 +103,7 @@ namespace cubmem
     metainfo = (MMON_METAINFO *)meta_ptr;
 
     metainfo->size = (uint64_t) size;
+    m_total_mem_usage += size;
 
     make_tag_name (tag_name, file, line);
 retry:
